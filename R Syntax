@@ -1,0 +1,458 @@
+
+############################################################################
+#################### Can Mood Disorders Be Classified? #####################
+############################################################################
+# All rights reserved (c) 2020 Jason Spedding.
+# jason.spedding@griffithuni.edu.au
+# 09/06/2020
+
+# RQs: 
+# Can machine learning methods be used to classify the presence of mood disorders based
+# on employee attitudes towards mental health in the workplace?
+
+# data set found @ https://www.kaggle.com/osmi/mental-health-in-tech-2016
+
+setwd('C:/Users/jason/OneDrive/Documents/RStudioWD')
+df.backup <- read.csv('v.00 mental-heath-in-tech-2016_20161114.csv')
+
+df <- df.backup
+
+library(neuralnet)
+library(rpart) # Random forrest package.
+library(rpart.plot)# Random forrest package.
+library(randomForest)# Random forrest package.
+library(e1071) #SVM library
+library(plyr)
+library(tidyverse)
+library(stringr) # load the stringr package
+library(caTools) # for test train split.
+
+############################################################################
+##### Data cleaning! #####
+# Sorting out column names.
+colnames(df) <- c("self.employ", "org.size", "tech.org", "tech.role", "mh.benefits", "mh.options", 
+                  "mh.comms", "mh.resources", "mh.anonymity", "mh.leave", "mh.neg", "ph.neg", 
+                  "mh.discuss.cw", "mh.discuss.sup", "mh.serious", "mh.consequences", "mh.insurance", 
+                  "mh.helpseek", "mh.reveal.clients", "mh.reveal.client.neg", "mh.reveal.cw", 
+                  "mh.reveal.cw.neg", "productivity", "product.percent", "previous.employ", 
+                  "pre.employ.benefits", "pre.employ.aware", "pre.employ.comms", 
+                  "pre.employ.mh.resources", "pre.employ.anon", "pre.employ.negcon", 
+                  "pre.employ.phynegcon", "pre.employ.discuss.mh", "pre.employ.discuss.sup", 
+                  "pre.employ.serious", "pre.employ.negcon.other", "phy.interview", "qual.response", 
+                  "mh.interview", "qual.response2", "mh.ident.negcareer", "mh.viewed.neg", 
+                  "disclose.mh.friends", "exp.neg.outcomes", "exp.others.disclose.mh", "family.mh", 
+                  "previous.mh", "current.mh", "qual.response3", "qual.response4", "diagnosis", 
+                  "qual.response5", "mh.treatment", "mh.interferes.treatment", 
+                  "mh.interferes.notreatment", "age", "gender", "country.live", "state.live", 
+                  "country.work", "state.work", "position", "remote.work") 
+# Need to recode vars into dummys or factors.
+# Time to create some MH disorder dummy variables.
+df$current.mh.string <- df$"qual.response5"
+
+mood <- "Mood Disorder (Depression, Bipolar Disorder, etc)"
+anx <- "Anxiety Disorder (Generalized, Social, Phobia, etc)"
+stress <- "Stress Response Syndromes"
+substance <- "Substance Use Disorder"
+ocb <- "Obsessive-Compulsive Disorder"
+eatdis <- "Eating Disorder (Anorexia, Bulimia, etc)"
+perdis <- "Personality Disorder (Borderline, Antisocial, Paranoid, etc)"
+adhd <- "Attention Deficit Hyperactivity Disorder"
+addict <- "Addictive Disorder"
+ptsd <- "Post-traumatic Stress Disorder"
+pdd <- "Pervasive Developmental Disorder (Not Otherwise Specified)"
+sad <- "Seasonal Affective Disorder"
+burnout <- "Burn out"
+pddnos <- "PDD-NOS"
+dd <- "Dissociative Disorder"
+depress <- "Depression"
+autism <- "Autism (Asperger's)"
+tbi <- "Traumatic Brain Injury"
+genderdis <- "Gender Dysphoria"
+aspergers <- "Asperges"
+psychdis <- "Psychotic Disorder (Schizophrenia, Schizoaffective, etc)"
+sexadd <- "Sexual addiction"
+sleepdis <- "Sleeping Disorder"
+
+df$mh.mood <- grepl(mood, df$current.mh.string, fixed = TRUE) | grepl(depress, df$current.mh.string, fixed = TRUE) #this fixed = TRUE is important for reasons i dont understand (https://stackoverflow.com/questions/10128617/test-if-characters-are-in-a-string)
+df$mh.anx <- grepl(anx, df$current.mh.string, fixed = TRUE)
+df$mh.stress <- grepl(stress, df$current.mh.string, fixed = TRUE)
+df$mh.substance <- grepl(substance, df$current.mh.string, fixed = TRUE)
+df$mh.ocb <- grepl(ocb, df$current.mh.string, fixed = TRUE)
+df$mh.eatdis <- grepl(eatdis, df$current.mh.string, fixed = TRUE)
+df$mh.perdis <- grepl(perdis, df$current.mh.string, fixed = TRUE) |grepl("Schizotypal Personality Disorder", df$current.mh.string, fixed = TRUE)
+df$mh.adhd <- grepl(adhd, df$current.mh.string, fixed = TRUE) | grepl("ADD (w/o Hyperactivity)", df$current.mh.string, fixed = TRUE)
+df$mh.addict <- grepl(addict, df$current.mh.string, fixed = TRUE) | grepl(sexadd, df$current.mh.string, fixed = TRUE)
+df$mh.ptsd <- grepl(ptsd, df$current.mh.string, fixed = TRUE)
+df$mh.pdd <- grepl(pdd, df$current.mh.string, fixed = TRUE)
+df$mh.sad <- grepl(sad, df$current.mh.string, fixed = TRUE)
+df$mh.burnout <- grepl(burnout, df$current.mh.string, fixed = TRUE)
+df$mh.pddnos <- grepl(pddnos, df$current.mh.string, fixed = TRUE)
+df$mh.dd <- grepl(dd, df$current.mh.string, fixed = TRUE)
+df$mh.autism <- grepl(autism, df$current.mh.string, fixed = TRUE) | grepl(aspergers, df$current.mh.string, fixed = TRUE) | grepl("Autism", df$current.mh.string, fixed = TRUE) | grepl("Autism Spectrum Disorder", df$current.mh.string, fixed = TRUE) | grepl("Autism spectrum disorder", df$current.mh.string, fixed = TRUE)
+df$mh.tbi <- grepl(tbi, df$current.mh.string, fixed = TRUE)
+df$mh.genderdis <- grepl(genderdis, df$current.mh.string, fixed = TRUE) | grepl("Transgender", df$current.mh.string, fixed = TRUE)
+df$mh.psychdis <- grepl(psychdis, df$current.mh.string, fixed = TRUE)
+df$mh.sleepdis <- grepl(sleepdis, df$current.mh.string, fixed = TRUE)
+
+# creating a true/false for one or more of the above MH issues.
+df$current.mh.issue <- ifelse(((df$mh.mood== TRUE) | (df$mh.anx== TRUE) | (df$mh.stress== TRUE) | (df$mh.substance== TRUE) | (df$mh.ocb== TRUE) | (df$mh.eatdis== TRUE) | (df$mh.perdis== TRUE) | (df$mh.adhd== TRUE) | (df$mh.addict== TRUE) |
+                    (df$mh.ptsd== TRUE) | (df$mh.pdd== TRUE) | (df$mh.sad== TRUE) | (df$mh.burnout== TRUE) | (df$mh.pddnos== TRUE) | (df$mh.dd== TRUE) | (df$mh.autism== TRUE) | (df$mh.tbi== TRUE) | (df$mh.genderdis== TRUE) | (df$mh.psychdis== TRUE) | (df$mh.sleepdis== TRUE)), TRUE, FALSE)
+
+###########################################################################
+##### Removing unused data.
+# Set the dv variable.
+
+df$dv <- df$mh.mood  
+
+# going to clean and test the first 18 variables.
+
+# column 1 NOTE: people who responded self-employed only received a few q's, we'll use this to screen them out later. 
+any(is.na(df$self.employ)) 
+# column 2
+df$org.size <- as.numeric(str_replace_all(df$org.size, c("1-5" = "1", "6-25" = "2", "26-100" = "3", "100-500" = "4", "500-1000" = "5", "More than 1000" = "6")))
+# column 4 has too much missing.
+df <- select(df, -c(tech.role))
+# column 5 - 9 as factors.
+df$mh.benefits <- as.factor(df$mh.benefits)
+df$mh.options <- as.factor(df$mh.options)
+df$mh.comms <- as.factor(df$mh.comms)
+df$mh.resources <- as.factor(df$mh.resources)
+df$mh.anonymity <- as.factor(df$mh.anonymity)
+#column 10 can be converted to Likert scale.
+df$mh.leave <- ifelse(df$mh.leave == 'Very easy', 1 ,
+                      ifelse(df$mh.leave == 'Somewhat easy', 2 , 
+                             ifelse(df$mh.leave == "Neither easy nor difficult", 3, 
+                                    ifelse(df$mh.leave == 'Somewhat difficult', 4, 
+                                           ifelse(df$mh.leave == 'Very difficult', 5 , NA)))))
+# column 11 - 16
+df$mh.neg <- as.factor(df$mh.neg)
+df$ph.neg <- as.factor(df$ph.neg)
+df$mh.discuss.cw <- as.factor(df$mh.discuss.cw)
+df$mh.discuss.sup <- as.factor(df$mh.discuss.sup)
+df$mh.serious <- as.factor(df$mh.serious)
+df$mh.consequences <- as.factor(df$mh.consequences)
+# lots of missing column 17 and 18 these were only answered by self-employed.
+df <- select(df, -mh.insurance)
+df <- select(df, -mh.helpseek)
+# removing column 19 - 36 mostly asked about previous employment. 
+df <- select(df, -c(mh.reveal.clients,	mh.reveal.client.neg,	mh.reveal.cw,	mh.reveal.cw.neg,	
+                    productivity,	product.percent,	previous.employ,	pre.employ.benefits,	
+                    pre.employ.aware,	pre.employ.comms,	pre.employ.mh.resources,	pre.employ.anon,	
+                    pre.employ.negcon,	pre.employ.phynegcon,	pre.employ.discuss.mh,	
+                    pre.employ.discuss.sup,	pre.employ.serious,	pre.employ.negcon.other))
+# column 37 
+df$phy.interview <- as.factor(df$phy.interview)
+# removing column 38 & 40 (qual open responses)
+df <- select(df, -c(qual.response, qual.response2))
+# colunm 39, 41 and 42.
+df$mh.interview <- as.factor(df$mh.interview)
+df$mh.ident.negcareer <- as.factor(df$mh.ident.negcareer)
+df$mh.viewed.neg <- as.factor(df$mh.viewed.neg)
+# recode column 43 to Likert (changed 'i do not have MH illness to NA).
+df$disclose.mh.friends <- ifelse(df$disclose.mh.friends == 'Not open at all', 1 , 
+                                  ifelse(df$disclose.mh.friends == 'Somewhat not open', 2 , 
+                                         ifelse(df$disclose.mh.friends == "Neutral", 3, 
+                                                ifelse(df$disclose.mh.friends == 'Somewhat open', 4, 
+                                                       ifelse(df$disclose.mh.friends == 'Very open', 5 , NA)))))
+# column 44 -46
+df$exp.neg.outcomes <- as.factor(df$exp.neg.outcomes)
+df$exp.others.disclose.mh <- as.factor(df$exp.others.disclose.mh)
+df$family.mh <- as.factor(df$family.mh)
+# column 47-52 'Have you had a mental health disorder in the past?'
+# removed many of these because they will r highly with MH outcomes.
+df <- select(df, -c(previous.mh, current.mh, qual.response3, qual.response4, diagnosis, qual.response5))
+# column 53 removed for now 'Have you ever sought treatment for a mental health issue from a mental health professional?'
+df <- select(df, -c(mh.treatment))
+# column 54 & 55 removed
+df <- select(df, -c(mh.interferes.treatment, mh.interferes.notreatment))
+# column 56 is good, 57 needs conversion
+df$gender <- str_replace_all(df$gender,
+                             c("MALE" = "m" , "Male" = "m", "male" = "m" ,  "male " = "m", "Male " = "m",  "M" = "m" ,  "man" = "m" ,  "Cis male" = "m" ,  
+                               "Male." = "m" ,  "Male (cis)" = "m" ,  "Sex is male" = "m" ,  "Malr" = "m" ,  "Dude" = "m" ,  
+                               "mail" = "m" ,  "M" = "m" , "cis man" = "m" ,  "cisdude"  = "m" , 
+                               "Female" = "f", "FEMALE" = "f" ,  "I identify as female." = "f" ,  "female"  = "f" ,  "F"  = "f" , 
+                               "Woman" = "f" ,  "fm" = "f" ,  "Cis female"  = "f" ,  "female/woman" = "f" ,  
+                               "Cisgender Female"  = "f" ,  "fem"  = "f" ,  " Female"  = "f" ,  "Female (props for making this a freeform field, though)" = "f" , 
+                               "Cis-woman" = "f" )) 
+
+df$gender <- ifelse(df$gender == "m" , "m", ifelse(df$gender == "f", "f", "i"))
+df$gender <- as.factor(df$gender)
+# removed column 58, 59, 60 & 61, country and state info.
+df <- select(df, -c(country.live, state.live, country.work, state.work))
+# column 62
+#df$position <- as.factor(df$position) # ok so this column is a 'tick all that apply' column, so i'll need to parse these into dummy columns (similar to MH diagnosis).
+
+front.end.devs <- "Front-end Developer"
+team.lead <- "Supervisor/Team Lead"
+support <- "Support"
+back.end.devs <- "Back-end Developer"
+dev.advocate <- "Dev Evangelist/Advocate"
+exec.lead <- "Executive Leadership"
+dev.ops <- "DevOps/SysAdmin"
+other <- "Other"
+designer <- "Designer"
+human.res <- "HR"
+one.per <- "One-person shop"
+sales <- "Sales"
+
+df$role.front.end.devs <- grepl(front.end.devs, df$position, fixed = TRUE) 
+df$role.team.lead <- grepl(team.lead, df$position, fixed = TRUE)
+df$role.support <- grepl(support, df$position, fixed = TRUE)
+df$role.back.end.devs <- grepl(back.end.devs, df$position, fixed = TRUE)
+df$role.dev.advocate <- grepl(dev.advocate, df$position, fixed = TRUE)
+df$role.exec.lead <- grepl(exec.lead, df$position, fixed = TRUE)
+df$role.dev.ops <- grepl(dev.ops, df$position, fixed = TRUE)
+df$role.other <- grepl(other, df$position, fixed = TRUE)
+df$role.designer <- grepl(designer, df$position, fixed = TRUE)
+df$role.human.res <- grepl(human.res, df$position, fixed = TRUE)
+df$role.one.per <- grepl(one.per, df$position, fixed = TRUE)
+df$role.sales <- grepl(sales, df$position, fixed = TRUE)
+
+df <- select(df, -c(position))
+# column 63 remote work
+df$remote.work <- ifelse(df$remote.work == 'Never', 1 , 
+                                 ifelse(df$remote.work == 'Sometimes', 2 , 
+                                        ifelse(df$remote.work == "Always", 3, NA)))
+
+# Going to remove the unused DVs (going to focus on mood disorders as the others are too infrequent).
+# Because line 98 sets the label var (dv) we can delete these from the dataframe. 
+df <- select(df, -c(current.mh.issue, mh.mood, mh.anx, mh.stress, mh.substance, mh.ocb, mh.eatdis, mh.perdis, mh.adhd, mh.addict,
+                    mh.ptsd, mh.pdd, mh.sad, mh.burnout, mh.pddnos, mh.dd, mh.autism, mh.tbi, mh.genderdis,
+                    mh.psychdis, mh.sleepdis, current.mh.string))
+
+###########################################################################
+##### still some NA's which R doesnt like.
+# remove those who self employ (self-employed individuals skipped too many questions to be useful)
+df.clean <- df
+df.clean <- subset(df.clean, self.employ == 0)
+df.clean <- select(df.clean, -c(self.employ))
+# also NAs in the mh.leave and disclose.mh.friends columns.
+df.clean <- subset(df.clean, df.clean$mh.leave != 'NA')
+df.clean <- subset(df.clean, df.clean$disclose.mh.friends != 'NA')
+
+###########################################################################
+##### Train test split #####.
+
+set.seed(727)
+sample <- sample.split(df.clean$dv, .7)
+train.df <- subset(df.clean, sample == TRUE)
+test.df <- subset(df.clean, sample == FALSE)
+
+###########################################################################
+##### Logistic Regression #####.
+
+log.model <- glm(dv ~ ., family = binomial(link = 'logit'), data = train.df)
+summary(log.model) # might try to retrain models deleting vars which are non-sig.
+# actually the log predict function generates a warning because of the 'exp.others.disclose.mh' NA values.
+# going to remove this var then rerun the model (will put back for other classifiers). 
+log.train.df <- select(train.df, -c(exp.others.disclose.mh))
+log.test.df <- select(test.df, -c(exp.others.disclose.mh))
+
+log.model <- glm(dv ~ ., family = binomial(link = 'logit'), data = log.train.df)
+summary(log.model)
+
+log.predictions <- predict(log.model, log.test.df, type = 'response') #'response' is used for classifaction.
+# need to convert the probability outputs to 0 or 1. 
+log.binary.values <- ifelse(log.predictions > .5, 1, 0)
+
+log.misclass.error <- mean(log.binary.values != test.df$dv)
+print(1 - log.misclass.error)
+
+log.table <- table(log.binary.values, test.df$dv)
+#print(log.table)
+#a 69.89% accuracy for the log model.
+
+###########################################################################
+##### Random Forrest Model #####.
+
+# Does a random forrest model perform better?
+# need to set these as factors or RF trys to use regression.
+train.df$dv <- as.factor(train.df$dv)
+test.df$dv <- as.factor(test.df$dv)
+
+# rf.model <- randomForest(x = train.df, y = train.df$mh.mood, ntree = 100, importance = TRUE) # so this gave perfect predicts, i think cause the labels were pasted maybe?
+rf.model <- randomForest(dv ~ ., data = train.df, ntree = 100, importance = TRUE) # Importance using GINI impurity index values. 
+rf.model$confusion
+rf.model$importance
+
+rf.predictions <- predict(rf.model, select(test.df, -c(dv)))
+
+rf.table <- table(rf.predictions, test.df$dv)
+
+#print(rf.table)
+#a Random Forrest model accuracy is 71.43%, so slightly better than the log model.
+
+###########################################################################
+##### SVM Model #####.
+
+svm.model <- svm(train.df$dv ~ ., data = train.df, type = "C", kernel = 'linear')
+summary(svm.model)
+
+svm.predicted.values <- predict(svm.model, select(test.df, -c(dv)))
+
+table(svm.predicted.values, test.df$dv)
+
+#a so the SVM kinda did ok (but not great), time to tune the cost and gamma values. 
+tuned.train.df <- tune(svm, train.x = dv ~ ., data = train.df,
+                       kernel = 'radial', type = 'C', ranges = list(cost = c(.5, 1, 1.5, 2), 
+                                                                    gamma = c(.005, .01, .05, .10)))
+print(tuned.train.df)
+
+tuned.model <- svm(dv ~ ., data = train.df, type = "C", cost = 1, gamma = .01)
+tuned.predictions <- predict(tuned.model, select(test.df, -c(dv)))
+svm.table <- table(tuned.predictions, test.df$dv)
+
+#print(svm.table)
+#a Tuned SVM predicts at 71.07% accuracy.
+
+###########################################################################
+##### Neural Network #####.
+# for more info see http://uc-r.github.io/ann_classification 
+# need to convert factors into dummy vars before 'neuralnet' will accept them. Going to reformat the df then redo the test/train split.
+nn.df <- model.matrix(~dv + org.size + tech.org + mh.benefits + mh.options + mh.comms + 
+                              mh.resources + mh.anonymity + mh.leave + mh.neg + ph.neg + 
+                              mh.discuss.cw + mh.discuss.sup + mh.serious + mh.consequences + 
+                              phy.interview + mh.interview + mh.ident.negcareer + mh.viewed.neg + 
+                              disclose.mh.friends + exp.neg.outcomes + exp.others.disclose.mh + 
+                              family.mh + age + gender + remote.work + role.front.end.devs + 
+                              role.team.lead + role.support + role.back.end.devs + role.dev.advocate + 
+                              role.exec.lead + role.dev.ops + role.other + role.designer + 
+                              role.human.res + role.one.per + role.sales, 
+                      data = df.clean)
+nn.df <- nn.df[,-1] # need to remove the '(Intercept)' column from here also. 
+
+nn.df <- as.data.frame(scale(nn.df))
+
+nn.df$dvTRUE <- ifelse(nn.df$dvTRUE > .5, 1, 0)
+
+# ok that conversion stuffed up the column labels (dummy coded all responses).
+nn.column.names <- colnames(nn.df)
+
+# need to remove the symbols and spaces from the column labels.
+nn.column.names <- gsub(pattern = "'", replacement = ".", x = nn.column.names)
+nn.column.names <- gsub(pattern = " ", replacement = ".", x = nn.column.names)
+nn.column.names <- gsub(pattern = ",", replacement = ".", x = nn.column.names)
+nn.column.names <- gsub(pattern = "/", replacement = ".", x = nn.column.names)
+
+nn.formula <- as.formula(paste("dvTRUE ~", paste(nn.column.names[!nn.column.names %in% "dvTRUE"], 
+                                                 collapse = " + ")))
+colnames(nn.df) <- nn.column.names
+
+##### Redoing test/train split #####.
+set.seed(727)
+sample <- sample.split(nn.df[,1], .7)
+nn.train.df <- subset(nn.df, sample == TRUE)
+nn.test.df <- subset(nn.df, sample == FALSE)
+
+set.seed(727)
+nn <- neuralnet(nn.formula, data = nn.train.df, hidden = c(round(ncol(nn.train.df)/2)), 
+                linear.output = FALSE, err.fct = "ce", likelihood = TRUE) #set linear.output to FALSE for classification.
+predicted.nn.values <- neuralnet::compute(nn, nn.test.df[,2:77])
+nn.predicted.test.values <- predicted.nn.values$net.result
+
+# need to convert the probability outputs to 0 or 1. 
+nn.binary.values <- c(rep(0, nrow(nn.predicted.test.values)))
+for (i in 1:nrow(nn.predicted.test.values)) {
+  if (nn.predicted.test.values[i] > .5) {
+    nn.binary.values[i] <- TRUE
+  } else nn.binary.values[i] <- FALSE
+}
+
+nn.table <- table(nn.binary.values, test.df$dv)
+print(nn.table)
+
+# 72.76% accuracy, also it seemed to correctly classified many more True positives...
+
+#plot(nn)
+
+###########################################################################
+##### Plotting Classifiers Outcomes #####.
+# first need to calculate the accuracy was guessing (given training data sample descriptives)
+# population rates = 38.82%
+pop.rate <- (length(train.df$dv[train.df$dv == TRUE]))/(nrow(train.df)/100) #best guess is 39.82 % positive rate in test set. 
+
+guessing.true.pos <- round(((nrow(test.df)/100) * (pop.rate/100) * pop.rate), 0) # Best guess 44 people in test data (n =279) are positive.
+guessing.true.neg <- round(((nrow(test.df)/100) * ((100 - pop.rate)/100) * (100 - pop.rate)), 0) # 101 people would be guessed negative.
+guessing.error.rate <- round(((length(test.df$dv[test.df$dv == TRUE])) - guessing.true.pos), 0) # error rates (note these are equal for both type I and type II)
+
+# creating a confusion matrix of correct/false classifications.
+
+con.matrices <- data.frame(cbind(log.table, rf.table, svm.table, nn.table))
+colnames(con.matrices) <- c('log F', 'log T', 'rf F', 'rf T', 'svm F', 'svm T', 'nn F', 'nn T')
+rownames(con.matrices) <- c('False', 'True')
+
+correct.class.cm <- data.frame(cbind(c(log.table[1,1], log.table[2,2], (log.table[1,2] + log.table[2,1])), 
+                                     c(rf.table[1,1], rf.table[2,2], (rf.table[1,2] + rf.table[2,1])),
+                                     c(svm.table[1,1], svm.table[2,2], (svm.table[1,2] + svm.table[2,1])), 
+                                     c(nn.table[1,1], nn.table[2,2], (nn.table[1,2] + nn.table[2,1]))))
+colnames(correct.class.cm) <- c('log', 'rf', 'svm', 'nn')
+rownames(correct.class.cm) <- c('False', 'True', 'Error')
+
+# note: the factor labels below tell ggplot to order them in this order.
+ml.method <- c(rep('Logistic Regression' , 3), rep('Random Forrest' , 3), rep('Support Vector Machine', 3) , rep('Neural Network', 3), rep('Guessing', 3))
+ml.method <- factor(ml.method, levels = c('Logistic Regression', 'Random Forrest', 'Support Vector Machine', 'Neural Network', 'Guessing'))
+condition <- rep(c('True Positive' , 'True Negative' , 'Type II Error'), 5)
+condition <- factor(condition, levels = c('True Positive', 'True Negative', 'Type II Error'))
+values <- c(correct.class.cm[2,1], correct.class.cm[1,1], correct.class.cm[3,1], 
+            correct.class.cm[2,2], correct.class.cm[1,2], correct.class.cm[3,2],
+            correct.class.cm[2,3], correct.class.cm[1,3], correct.class.cm[3,3],
+            correct.class.cm[2,4], correct.class.cm[1,4], correct.class.cm[3,4],
+            guessing.true.pos, guessing.true.neg, (guessing.error.rate * 2))
+
+bar.graph.df <- data.frame(ml.method, condition, values)
+
+# creating an error graph to demonstrate type I vs II errors.
+error.ml.method <- c(rep('Logistic Regression' , 2), rep('Random Forrest' , 2), rep('Support Vector Machine' , 2), rep('Neural Network', 2))
+error.ml.method <- factor(error.ml.method, levels = c('Logistic Regression', 'Random Forrest', 'Support Vector Machine', 'Neural Network'))
+error.type <- rep(c('False Negative' , 'False Positive'), 4)
+error.type <- factor(error.type, levels = c('False Positive', 'False Negative'))
+error.values <- c(con.matrices[2,1], con.matrices[1,2],
+                  con.matrices[2,3], con.matrices[1,4],
+                  con.matrices[2,5], con.matrices[1,6],
+                  con.matrices[2,7], con.matrices[1,8])
+error.graph.df <- data.frame(error.ml.method, error.type, error.values)
+
+##### Time to GGPlot #####.
+
+# Positive classification graph.
+
+#ggplot(bar.graph.df, aes(fill=condition, y=values, x=ml.method)) + 
+#  geom_bar(position="dodge", stat="identity", color = 'black') + theme_bw() + 
+#  scale_fill_manual(values = c('hot pink', 'light blue', 'grey')) + 
+#  xlab("Classification Method") + ylab('Participant Responses') +
+#  labs(fill = '') +  scale_y_continuous(expand = c(0, 0), limits = c(0, 150))
+
+# Error graph.
+
+#ggplot(error.graph.df, aes(fill=error.type, y=error.values, x=error.ml.method)) + 
+#  geom_bar(position="dodge", stat="identity", color = 'black') + theme_bw() + 
+#  scale_fill_manual(values = c('light blue', 'hot pink')) + 
+#  xlab("Classification Method") + ylab('Participant Responses') +
+#  labs(fill = '') +  scale_y_continuous(expand = c(0, 0), limits = c(0, 150))
+
+# graph including type I and II error values.
+
+#ggplot(bar.graph.df, aes(fill=condition, y=values, x=ml.method)) + 
+#  geom_bar(position="dodge", stat="identity", color = 'black') + theme_bw() + 
+#  scale_fill_manual(values = c('light blue', 'hot pink', 'dark grey', 'light grey')) + 
+#  xlab("Classification Method") + ylab('Participant Responses') +
+#  labs(fill = '') +  scale_y_continuous(expand = c(0, 0), limits = c(0, 150)) + 
+#  geom_rect(data= bar.graph.df, mapping=aes(xmin=1.15, xmax=1.45, ymin=0, ymax=con.matrices[2,1], fill= 'Type I Error'), color="black", alpha=0.5) +
+#  geom_rect(data= bar.graph.df, mapping=aes(xmin=2.15, xmax=2.45, ymin=0, ymax=con.matrices[2,3], fill= 'Type I Error'), color="black", alpha=0.5) +
+#  geom_rect(data= bar.graph.df, mapping=aes(xmin=3.15, xmax=3.45, ymin=0, ymax=con.matrices[2,5], fill= 'Type I Error'), color="black", alpha=0.5) +
+#  geom_rect(data= bar.graph.df, mapping=aes(xmin=4.15, xmax=4.45, ymin=0, ymax=con.matrices[2,7], fill= 'Type I Error'), color="black", alpha=0.5)
+
+
+# Final graph including type I and II error & probablities based on guessing values.
+
+ggplot(bar.graph.df, aes(fill=condition, y=values, x=ml.method)) + 
+  geom_bar(position="dodge", stat="identity", color = 'black') + theme_bw() + 
+  scale_fill_manual(values = c('light blue', 'hot pink', 'dark grey', 'light grey')) + 
+  xlab("Classification Method") + ylab('Participant Responses') +
+  labs(fill = '') +  scale_y_continuous(expand = c(0, 0), limits = c(0, 150)) + 
+  geom_rect(data= bar.graph.df, mapping=aes(xmin=1.15, xmax=1.45, ymin=0, ymax=con.matrices[2,1], fill= 'Type I Error'), color="black", alpha=0.5) +
+  geom_rect(data= bar.graph.df, mapping=aes(xmin=2.15, xmax=2.45, ymin=0, ymax=con.matrices[2,3], fill= 'Type I Error'), color="black", alpha=0.5) +
+  geom_rect(data= bar.graph.df, mapping=aes(xmin=3.15, xmax=3.45, ymin=0, ymax=con.matrices[2,5], fill= 'Type I Error'), color="black", alpha=0.5) +
+  geom_rect(data= bar.graph.df, mapping=aes(xmin=4.15, xmax=4.45, ymin=0, ymax=con.matrices[2,7], fill= 'Type I Error'), color="black", alpha=0.5) +
+  geom_rect(data= bar.graph.df, mapping=aes(xmin=5.15, xmax=5.45, ymin=0, ymax=((bar.graph.df[15,3])/2), fill= 'Type I Error'), color="black", alpha=0.5)
+
